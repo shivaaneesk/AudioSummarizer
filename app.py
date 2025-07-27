@@ -9,15 +9,10 @@ app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-# --- Model Loading (can be done once at startup if desired) ---
-# To save time on each request, you could load models here.
-# However, for memory efficiency on systems with less RAM, loading on-demand is safer.
-
 def transcribe_audio(audio_path):
     """Transcribes the audio file using Whisper."""
     print("Loading Whisper model 'base'...")
     try:
-        # Force model to run on CPU to avoid Metal/GPU memory errors on macOS
         model = whisper.load_model("base", device="cpu")
         print("Transcribing audio...")
         result = model.transcribe(audio_path)
@@ -33,16 +28,12 @@ def summarize_text(text):
     
     print("Loading summarization model 'facebook/bart-large-cnn'...")
     try:
-        # Using a robust model for summarization, forced to CPU
         summarizer = pipeline("summarization", model="facebook/bart-large-cnn", device="cpu")
         
         transcript_word_count = len(text.split())
-        # Set max length to half the transcript length
         max_len = transcript_word_count // 2
-        # Set min length to 80% of the max length to encourage longer summaries
         min_len = (max_len * 8) // 10
 
-        # Ensure a reasonable minimum length for very short transcripts
         if max_len < 30:
             max_len = 30
         if min_len < 15:
@@ -70,7 +61,6 @@ def upload():
     if file.filename == '':
         return jsonify({'error': 'No selected file'}), 400
     if file:
-        # Use a secure filename and a unique prefix
         filename = f"audio_{int(time.time())}.mp3"
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
@@ -85,7 +75,6 @@ def process(filename):
         return Response("File not found.", status=404)
 
     def generate():
-        # 1. Transcription
         yield 'data: {"status": "Transcribing audio...", "percent": 25}\n\n'
         transcript = transcribe_audio(filepath)
         if not transcript:
@@ -95,14 +84,12 @@ def process(filename):
 
         yield f'data: {json.dumps({"status": "Transcription complete. Summarizing...", "percent": 60})}\n\n'
         
-        # 2. Summarization
         summary = summarize_text(transcript)
         if not summary:
             error_data = json.dumps({"error": "Failed to generate summary."})
             yield f'data: {error_data}\n\n'
             return
 
-        # 3. Done
         final_data = json.dumps({
             "status": "Done",
             "percent": 100,
@@ -111,7 +98,6 @@ def process(filename):
         })
         yield f'data: {final_data}\n\n'
         
-        # Clean up the uploaded file
         try:
             os.remove(filepath)
             print(f"Removed uploaded file: {filepath}")
